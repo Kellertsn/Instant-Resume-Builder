@@ -5,7 +5,8 @@ A web application to auto-generate and style your resume from manual input. Fill
 ## Setup
 
 ```bash
-cd insta-site
+git clone https://github.com/Kellertsn/Instant-Resume-Builder.git
+cd Instant-Resume-Builder/insta-site
 npm install
 npm run dev
 ```

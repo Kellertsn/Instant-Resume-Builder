@@ -1,7 +1,18 @@
 {
-  "name": "insta-site",
-  "private": true,
-  "version": "0.0.0",
+  "name": "instant-resume-builder",
+  "description": "A web application to auto-generate and style your resume from manual input.",
+  "private": false,
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kellertsn/Instant-Resume-Builder.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Kellertsn/Instant-Resume-Builder/issues"
+  },
+  "homepage": "https://github.com/Kellertsn/Instant-Resume-Builder#readme",
+  "author": "Yu-Kai Tseng <terran.tseng@gmail.com>",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",

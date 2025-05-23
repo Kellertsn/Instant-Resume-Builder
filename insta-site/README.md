@@ -1,12 +1,42 @@
-# React + Vite
+# Instant Resume Builder
+A web application to quickly assemble and style resumes from manual input, featuring live preview and one-click PDF export.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Table of Contents
+- [Features](#features)
+- [Technologies](#technologies)
+- [Installation](#installation)
+- [Usage](#usage)
+- [License](#license)
 
-Currently, two official plugins are available:
+## Features
+- Dynamic section ordering via arrow buttons
+- Real-time resume preview
+- A4-compliant PDF generation using jsPDF & html2canvas
+- Editable sections: Profile, Education, Skills, Experience, Projects
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Technologies
+- React 19
+- Vite
+- Tailwind CSS
+- jsPDF
+- html2canvas
 
-## Expanding the ESLint configuration
+## Installation
+```bash
+# Clone repository
+git clone https://github.com/Kellertsn/Instant-Resume-Builder.git
+# Navigate to client
+cd Instant-Resume-Builder/insta-site
+# Install dependencies
+npm install
+# Start development server
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Usage
+1. Fill out the form sections on the left.
+2. Click **Show Preview** to toggle live preview.
+3. Click **Download PDF** to export your resume.
+
+## License
+MIT
