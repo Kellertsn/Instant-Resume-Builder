@@ -1,60 +1,60 @@
 # Instant Resume Builder
-A web application to quickly assemble and style resumes from manual input, featuring live preview and one-click PDF export.
 
-## Table of Contents
-- [Features](#features)
-- [Technologies](#technologies)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Deployment](#deployment)
-- [License](#license)
+A modern, open-source resume builder built with React, Vite, Tailwind CSS, and Firebase. Instantly create, preview, and export beautiful resumes – with cloud save/load support.
 
 ## Features
-- Dynamic section ordering via arrow buttons
-- Real-time resume preview
-- A4-compliant PDF generation using jsPDF & html2canvas
-- Editable sections: Profile, Education, Skills, Experience, Projects
 
-## Technologies
-- JavaScript
-- React 19
-- Vite
-- Tailwind CSS
-- jsPDF
-- html2canvas
+- Dynamic section editing (Profile, Education, Skills, Experience, Projects)
+- Real-time PDF preview and export
+- Cloud save/load via Firebase Firestore (shareable Resume ID)
+- Modern UI with Tailwind CSS
+- Easy deployment to Vercel or Firebase Hosting
 
-## Installation
+## How to Use
+
+1. **Fill in Your Resume:**
+   - Enter your information in the Profile, Education, Skills, Experience, and Projects sections.
+   - Use “Add Bullet” to add bullet points, or “Add Education/Experience/Project” to add more entries.
+2. **Preview and Download PDF:**
+   - Click “Show Preview” to see a live preview.
+   - Click “Download PDF” to get a high-quality PDF of your resume.
+3. **Cloud Save & Load:**
+   - **Save to Cloud:** Click “Save to Cloud” to store your resume online. You’ll get a unique Resume ID.
+   - **Load from Cloud:** Enter a Resume ID and click “Load from Cloud” to restore a previous resume.
+   - You can share your Resume ID to access your resume from any device.
+4. **Reorder and Edit Sections:**
+   - Use the arrows to reorder sections.
+   - All fields are editable at any time.
+
+### Use Cases
+- First-time users: Fill in your details, preview, and download or save to the cloud.
+- Multi-device: Save your Resume ID at home, load and edit at school or work.
+- Multiple versions: Each save creates a new Resume ID, so you can manage several versions.
+
+## Local Development
+
 ```bash
-# Clone repository
-git clone https://github.com/Kellertsn/Instant-Resume-Builder.git
-# Navigate to client
-cd Instant-Resume-Builder/insta-site
-# Install dependencies
+cd insta-site
 npm install
-# Start development server
 npm run dev
 ```
 
-## Usage
-1. Fill out the form sections on the left.
-2. Click **Show Preview** to toggle live preview.
-3. Click **Download PDF** to export your resume.
+Visit [http://localhost:5173](http://localhost:5173) in your browser.
+
+## Live Demo
+
+The latest version is always available at: [https://instant-resume-builder.vercel.app/](https://instant-resume-builder.vercel.app/)
 
 ## Deployment
-This project can be deployed quickly on Vercel. If you don’t have an account yet, sign up for a free account at https://vercel.com.
 
-### Vercel Web Deployment
-1. Push your code to a GitHub repository.
-2. In the Vercel dashboard, click **Import Project**, select your GitHub repo, and follow the prompts.
-3. When prompted for framework, select **Other** (or **Vite**). Ensure `vercel.json` is at the project root.
-4. Click **Deploy**.
+- **Vercel:** Deploy the `insta-site` folder as a Vite app. This project is already live at the link above.
+- **Firebase Hosting:** See [Firebase Hosting docs](https://firebase.google.com/docs/hosting).
 
-### Vercel CLI Deployment
-```bash
-npm install -g vercel
-vercel login           # log in or create account
-vercel                # follow interactive prompts to deploy
-```
+## Cloud Save/Load
+
+- Requires Firebase Firestore setup (see `src/firebase.js`).
+- Data is stored as JSON under a unique Resume ID.
 
 ## License
+
 MIT

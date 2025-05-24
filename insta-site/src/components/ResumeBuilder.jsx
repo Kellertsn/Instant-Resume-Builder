@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { saveResume, loadResume } from '../firestoreResume';
 
 export default function ResumeBuilder() {
   const [data, setData] = useState({
@@ -18,6 +19,8 @@ export default function ResumeBuilder() {
 
   const [order, setOrder] = useState(['profile','education','skills','experience','projects']);
   const [showPreview, setShowPreview] = useState(false);
+  const [resumeId, setResumeId] = useState('');
+  const [cloudStatus, setCloudStatus] = useState('');
 
   const handleBasic = e => setData({ ...data, [e.target.name]: e.target.value });
 
@@ -121,8 +124,41 @@ export default function ResumeBuilder() {
     });
   };
 
+  // --- Firestore Cloud Save/Load ---
+  const handleSaveToCloud = async () => {
+    setCloudStatus('Saving...');
+    try {
+      const id = await saveResume(data);
+      setResumeId(id);
+      setCloudStatus('Saved! Resume ID: ' + id);
+    } catch (e) {
+      setCloudStatus('Save failed: ' + e.message);
+    }
+  };
+  const handleLoadFromCloud = async () => {
+    setCloudStatus('Loading...');
+    try {
+      const loaded = await loadResume(resumeId);
+      if (loaded) {
+        setData(loaded);
+        setCloudStatus('Loaded!');
+      } else {
+        setCloudStatus('No resume found with this ID.');
+      }
+    } catch (e) {
+      setCloudStatus('Load failed: ' + e.message);
+    }
+  };
+
   return (
     <>
+      {/* Cloud Save/Load Controls */}
+      <div className="flex items-center space-x-2 mb-4">
+        <button className="px-3 py-1 bg-blue-600 text-white rounded" onClick={handleSaveToCloud} type="button">Save to Cloud</button>
+        <input className="border px-2 py-1 rounded" type="text" placeholder="Enter Resume ID to Load" value={resumeId} onChange={e => setResumeId(e.target.value)} style={{width:'240px'}} />
+        <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={handleLoadFromCloud} type="button">Load from Cloud</button>
+        <span className="text-sm ml-2">{cloudStatus}</span>
+      </div>
       <style>{`
         /* avoid page breaks and base styling */
         #resume-preview section {
