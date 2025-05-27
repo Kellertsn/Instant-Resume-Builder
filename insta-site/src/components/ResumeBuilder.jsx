@@ -95,6 +95,37 @@ export default function ResumeBuilder() {
     preview.style.width = `${pageWidth - margins.left - margins.right}px`;
     preview.style.margin = '0';
     preview.style.padding = '0';
+    
+    // Ensure tables render correctly
+    const tables = preview.querySelectorAll('table');
+    tables.forEach(table => {
+      table.style.width = '100%';
+      table.style.tableLayout = 'fixed';
+      table.style.borderCollapse = 'collapse';
+      const rows = table.querySelectorAll('tr');
+      rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if(cells.length >= 2) {
+          cells[0].style.width = '70%';
+          cells[0].style.paddingRight = '10px';
+          cells[1].style.width = '30%';
+          cells[1].style.whiteSpace = 'nowrap';
+          cells[1].style.textAlign = 'right';
+        }
+      });
+    });
+    // Improve bullet points
+    const bullets = preview.querySelectorAll('[style*="textIndent"]');
+    bullets.forEach(bullet => {
+      bullet.style.paddingLeft = '1.5ch';
+      bullet.style.textIndent = '-1ch';
+      bullet.style.marginBottom = '2px';
+    });
+    // Add spacing between sections
+    const sections = preview.querySelectorAll('section');
+    sections.forEach(section => {
+      section.style.marginBottom = '16px';
+    });
     await new Promise(resolve => {
       pdf.html(document.getElementById('resume-preview'), {
         x: margins.left,
@@ -374,28 +405,40 @@ export default function ResumeBuilder() {
                   case 'education':
                     return (
                       <section key="education" className="mb-6">
-                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-2 whitespace-nowrap">
+                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-3 whitespace-nowrap">
                           <span>Education</span>
                           <span className="controls inline-flex space-x-1">
                             <button disabled={order[0]==='education'} onClick={()=>moveSection('education','up')} className="text-sm">↑</button>
                             <button disabled={order[order.length-1]==='education'} onClick={()=>moveSection('education','down')} className="text-sm">↓</button>
                           </span>
                         </h2>
-                        <hr className="border-t border-gray-300 mb-2 mx-4" />
+                        <hr className="border-t border-gray-300 mb-3 mx-4" />
                         {data.education.map((ed, i) => (
-                          <div key={i} className="pb-3 mb-3 border-b border-gray-200 last:border-b-0">
-                            <div className="flex justify-between items-center w-full mb-2">
-                              <span className="font-bold text-sm">{ed.institution}</span>
-                              <span className="text-sm text-gray-600">{ed.dates}</span>
-                            </div>
-                            <div className="flex justify-between items-center w-full mb-3">
-                              <span className="text-sm">{ed.degree}</span>
-                              <span className="text-sm text-gray-600">{ed.location}</span>
-                            </div>
+                          <div key={i} className="pb-4 mb-4 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
+                            <table className="w-full mb-3 border-collapse" style={{tableLayout: 'fixed'}}>
+                              <tbody>
+                                <tr>
+                                  <td className="text-left w-3/4" style={{paddingRight: '10px'}}>
+                                    <span className="font-bold text-sm">{ed.institution}</span>
+                                  </td>
+                                  <td className="text-right w-1/4" style={{whiteSpace: 'nowrap'}}>
+                                    <span className="text-sm text-gray-600">{ed.dates}</span>
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="text-left w-3/4" style={{paddingRight: '10px'}}>
+                                    <span className="text-sm">{ed.degree}</span>
+                                  </td>
+                                  <td className="text-right w-1/4" style={{whiteSpace: 'nowrap'}}>
+                                    <span className="text-sm text-gray-600">{ed.location}</span>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
                             {ed.details && (
-                              <div className="text-xs">
+                              <div className="text-xs mt-1">
                                 {ed.details.map((bullet, bIdx) => (
-                                  <div key={bIdx} style={{ paddingLeft: '1ch', textIndent: '-1ch' }}>• {bullet}</div>
+                                  <div key={bIdx} style={{ paddingLeft: '1.5ch', textIndent: '-1ch', marginBottom: '2px' }}>• {bullet}</div>
                                 ))}
                               </div>
                             )}
@@ -406,14 +449,14 @@ export default function ResumeBuilder() {
                   case 'skills':
                     return (
                       <section key="skills" className="mb-6">
-                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-2 whitespace-nowrap">
+                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-3 whitespace-nowrap">
                           <span>Skills</span>
                           <span className="controls inline-flex space-x-1">
                             <button disabled={order[0]==='skills'} onClick={()=>moveSection('skills','up')} className="text-sm">↑</button>
                             <button disabled={order[order.length-1]==='skills'} onClick={()=>moveSection('skills','down')} className="text-sm">↓</button>
                           </span>
                         </h2>
-                        <hr className="border-t border-gray-300 mb-2 mx-4" />
+                        <hr className="border-t border-gray-300 mb-3 mx-4" />
                         {data.skills.length > 0 && (
                           <div className="text-xs">
                             {data.skills.map((sk, idx) => (
@@ -426,28 +469,40 @@ export default function ResumeBuilder() {
                   case 'experience':
                     return (
                       <section key="experience" className="mb-6">
-                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-2 whitespace-nowrap">
+                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-3 whitespace-nowrap">
                           <span>Experience</span>
                           <span className="controls inline-flex space-x-1">
                             <button disabled={order[0]==='experience'} onClick={()=>moveSection('experience','up')} className="text-sm">↑</button>
                             <button disabled={order[order.length-1]==='experience'} onClick={()=>moveSection('experience','down')} className="text-sm">↓</button>
                           </span>
                         </h2>
-                        <hr className="border-t border-gray-300 mb-2 mx-4" />
+                        <hr className="border-t border-gray-300 mb-3 mx-4" />
                         {data.experience.map((ex, i) => (
-                          <div key={i} className="pb-3 mb-3 border-b border-gray-200 last:border-b-0">
-                            <div className="flex justify-between items-center w-full mb-2">
-                              <span className="font-bold text-sm">{ex.company}</span>
-                              <span className="text-sm text-gray-600">{ex.dates}</span>
-                            </div>
-                            <div className="flex justify-between items-center w-full mb-2">
-                              <span className="text-sm">{ex.position}</span>
-                              <span className="text-sm text-gray-600">{ex.location}</span>
-                            </div>
+                          <div key={i} className="pb-4 mb-4 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
+                            <table className="w-full mb-2 border-collapse" style={{tableLayout: 'fixed'}}>
+                              <tbody>
+                                <tr>
+                                  <td className="text-left w-3/4" style={{paddingRight: '10px'}}>
+                                    <span className="font-bold text-sm">{ex.company}</span>
+                                  </td>
+                                  <td className="text-right w-1/4" style={{whiteSpace: 'nowrap'}}>
+                                    <span className="text-sm text-gray-600">{ex.dates}</span>
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="text-left w-3/4" style={{paddingRight: '10px'}}>
+                                    <span className="text-sm">{ex.position}</span>
+                                  </td>
+                                  <td className="text-right w-1/4" style={{whiteSpace: 'nowrap'}}>
+                                    <span className="text-sm text-gray-600">{ex.location}</span>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
                             {ex.details && (
-                              <div className="text-xs">
+                              <div className="text-xs mt-1">
                                 {ex.details.map((bullet, bIdx) => (
-                                  <div key={bIdx} style={{ paddingLeft: '1ch', textIndent: '-1ch' }}>• {bullet}</div>
+                                  <div key={bIdx} style={{ paddingLeft: '1.5ch', textIndent: '-1ch', marginBottom: '2px' }}>• {bullet}</div>
                                 ))}
                               </div>
                             )}
@@ -458,24 +513,32 @@ export default function ResumeBuilder() {
                   case 'projects':
                     return (
                       <section key="projects" className="mb-6">
-                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-2 whitespace-nowrap">
+                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-3 whitespace-nowrap">
                           <span>Projects</span>
                           <span className="controls inline-flex space-x-1">
                             <button disabled={order[0]==='projects'} onClick={()=>moveSection('projects','up')} className="text-sm">↑</button>
                             <button disabled={order[order.length-1]==='projects'} onClick={()=>moveSection('projects','down')} className="text-sm">↓</button>
                           </span>
                         </h2>
-                        <hr className="border-t border-gray-300 mb-2 mx-4" />
+                        <hr className="border-t border-gray-300 mb-3 mx-4" />
                         {data.projects.map((pr, i) => (
-                          <div key={i} className="pb-3 mb-3 border-b border-gray-200 last:border-b-0">
-                            <div className="flex justify-between items-center w-full mb-2">
-                              <span className="font-bold text-sm">{pr.title}</span>
-                              <span className="text-sm text-gray-600">{pr.dates}</span>
-                            </div>
+                          <div key={i} className="pb-4 mb-4 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
+                            <table className="w-full mb-2 border-collapse" style={{tableLayout: 'fixed'}}>
+                              <tbody>
+                                <tr>
+                                  <td className="text-left w-3/4" style={{paddingRight: '10px'}}>
+                                    <span className="font-bold text-sm">{pr.title}</span>
+                                  </td>
+                                  <td className="text-right w-1/4" style={{whiteSpace: 'nowrap'}}>
+                                    <span className="text-sm text-gray-600">{pr.dates}</span>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
                             {pr.description && (
-                              <div className="text-xs">
+                              <div className="text-xs mt-1">
                                 {pr.description.map((bullet, bIdx) => (
-                                  <div key={bIdx} style={{ paddingLeft: '1ch', textIndent: '-1ch' }}>• {bullet}</div>
+                                  <div key={bIdx} style={{ paddingLeft: '1.5ch', textIndent: '-1ch', marginBottom: '2px' }}>• {bullet}</div>
                                 ))}
                               </div>
                             )}
