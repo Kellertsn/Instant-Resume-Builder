@@ -5,7 +5,11 @@ A modern, open-source resume builder built with React, Vite, Tailwind CSS, and F
 ## Features
 
 - Dynamic section editing (Profile, Education, Skills, Experience, Projects)
-- Real-time PDF preview and export
+- Real-time PDF preview and export with high-quality formatting
+- Consistent styling between preview and PDF output
+- Optimized bullet point spacing and alignment
+- Proper handling of CJK (Chinese, Japanese, Korean) fonts
+- Smart contact information formatting with conditional separators
 - Cloud save/load via Firebase Firestore (shareable Resume ID)
 - Modern UI with Tailwind CSS
 - Easy deployment to Vercel or Firebase Hosting
@@ -14,13 +18,15 @@ A modern, open-source resume builder built with React, Vite, Tailwind CSS, and F
 
 1. **Fill in Your Resume:**
    - Enter your information in the Profile, Education, Skills, Experience, and Projects sections.
-   - Use “Add Bullet” to add bullet points, or “Add Education/Experience/Project” to add more entries.
+   - Use "Add Bullet" to add bullet points, or "Add Education/Experience/Project" to add more entries.
+   - Formatting is automatically applied - institution, company, and project titles are bold.
 2. **Preview and Download PDF:**
-   - Click “Show Preview” to see a live preview.
-   - Click “Download PDF” to get a high-quality PDF of your resume.
+   - Click "Show Preview" to see a live preview that exactly matches the PDF output.
+   - Click "Download PDF" to get a high-quality PDF of your resume with proper formatting.
+   - All formatting, spacing, and alignment in the preview will be preserved in the PDF.
 3. **Cloud Save & Load:**
-   - **Save to Cloud:** Click “Save to Cloud” to store your resume online. You’ll get a unique Resume ID.
-   - **Load from Cloud:** Enter a Resume ID and click “Load from Cloud” to restore a previous resume.
+   - **Save to Cloud:** Click "Save to Cloud" to store your resume online. You'll get a unique Resume ID.
+   - **Load from Cloud:** Enter a Resume ID and click "Load from Cloud" to restore a previous resume.
    - You can share your Resume ID to access your resume from any device.
 4. **Reorder and Edit Sections:**
    - Use the arrows to reorder sections.
@@ -44,6 +50,17 @@ Visit [http://localhost:5173](http://localhost:5173) in your browser.
 ## Live Demo
 
 The latest version is always available at: [https://instant-resume-builder.vercel.app/](https://instant-resume-builder.vercel.app/)
+
+## Recent Updates
+
+### May 2025
+- Improved PDF formatting to match preview exactly
+- Fixed alignment issues with right-side content (dates and locations)
+- Enhanced bullet point spacing for better readability
+- Added proper handling of CJK fonts
+- Implemented conditional separators for contact information
+- Made institution, company, and project titles bold for emphasis
+- Fixed section heading formatting in PDF output
 
 ## Deployment
 
