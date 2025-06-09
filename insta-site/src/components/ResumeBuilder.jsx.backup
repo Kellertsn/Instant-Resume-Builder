@@ -1,7 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { saveResume, loadResume, getRecentResumes } from '../firestoreResume';
+import { saveResume, loadResume } from '../firestoreResume';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { SortableSection } from './SortableSection';
 
 export default function ResumeBuilder() {
   // Preload Chinese font and calculate preview width
@@ -34,8 +49,7 @@ export default function ResumeBuilder() {
     education: [ { institution: '', degree: '', dates: '', location: '', details: [''] } ],
     skills: [ { skill: '' } ],
     experience: [ { position: '', company: '', dates: '', location: '', details: [''] } ],
-    projects: [ { title: '', dates: '', description: [''] } ],
-    createdAt: new Date().toISOString() // 添加創建時間戳
+    projects: [ { title: '', dates: '', description: [''] } ]
   });
 
   const [order, setOrder] = useState(['profile','education','skills','experience','projects']);
@@ -43,10 +57,7 @@ export default function ResumeBuilder() {
   const [livePreviewWidth, setLivePreviewWidth] = useState(0);
   const [resumeId, setResumeId] = useState('');
   const [cloudStatus, setCloudStatus] = useState('');
-  const [performanceMetrics, setPerformanceMetrics] = useState({ saveTime: 0, loadTime: 0 });
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [recentResumes, setRecentResumes] = useState([]);
-  const [showRecentResumes, setShowRecentResumes] = useState(false);
+  const [expandedSections, setExpandedSections] = useState({profile: true, education: true, skills: true, experience: true, projects: true});
 
   const handleBasic = e => setData({ ...data, [e.target.name]: e.target.value });
 
@@ -87,6 +98,7 @@ export default function ResumeBuilder() {
     }
   };
 
+  // Legacy section movement method (replaced by drag-and-drop)
   const moveSection = (section, dir) => {
     setOrder(prev => {
       const idx = prev.indexOf(section);
@@ -96,6 +108,37 @@ export default function ResumeBuilder() {
       [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
       return newOrder;
     });
+  };
+
+  // DnD kit sensors setup
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 }, // 5px movement before drag starts
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Toggle section expansion
+  const toggleSectionExpansion = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  // Handle section reordering via drag and drop
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      setOrder((items) => {
+        const oldIndex = items.indexOf(active.id);
+        const newIndex = items.indexOf(over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
   };
 
   const handleBulletChange = (section, idx, bIdx, value, field='details') => {
@@ -145,6 +188,12 @@ export default function ResumeBuilder() {
     preview.style.overflowWrap = 'break-word';
     preview.style.whiteSpace = 'normal';
     preview.style.wordBreak = 'break-word';
+    
+    // 隱藏只在預覽模式顯示的元素（不在 PDF 中顯示）
+    const previewOnlyElements = preview.querySelectorAll('.preview-only');
+    previewOnlyElements.forEach(element => {
+      element.style.display = 'none';
+    });
     preview.style.hyphens = 'auto';
     
     // Adjust table alignment
@@ -348,110 +397,29 @@ export default function ResumeBuilder() {
     });
   };
 
-  // Monitor network status changes
-  useEffect(() => {
-    const handleOnlineStatus = () => {
-      setIsOnline(navigator.onLine);
-      if (navigator.onLine) {
-        setCloudStatus('Network connection restored');
-      } else {
-        setCloudStatus('Currently in offline mode. Changes will sync when network is restored');
-      }
-    };
-
-    window.addEventListener('online', handleOnlineStatus);
-    window.addEventListener('offline', handleOnlineStatus);
-
-    return () => {
-      window.removeEventListener('online', handleOnlineStatus);
-      window.removeEventListener('offline', handleOnlineStatus);
-    };
-  }, []);
-
   // --- Firestore Cloud Save/Load ---
   const handleSaveToCloud = async () => {
     setCloudStatus('Saving...');
     try {
-      // Add timestamp
-      const resumeData = {
-        ...data,
-        updatedAt: new Date().toISOString(),
-        createdAt: data.createdAt || new Date().toISOString()
-      };
-      
-      const result = await saveResume(resumeData, resumeId || null);
-      
-      if (result.success) {
-        setResumeId(result.id);
-        setPerformanceMetrics(prev => ({ ...prev, saveTime: result.saveTime }));
-        setCloudStatus(`Save successful! Resume ID: ${result.id} (${result.saveTime.toFixed(0)}ms)`);
-        
-        // Update recent resumes list
-        fetchRecentResumes();
-      } else {
-        setCloudStatus(`Save failed: ${result.message}`);
-      }
+      const id = await saveResume(data);
+      setResumeId(id);
+      setCloudStatus('Saved! Resume ID: ' + id);
     } catch (e) {
-      setCloudStatus(`Save failed: ${e.message}`);
-      console.error('Save error:', e);
+      setCloudStatus('Save failed: ' + e.message);
     }
   };
-  
   const handleLoadFromCloud = async () => {
-    if (!resumeId.trim()) {
-      setCloudStatus('Please enter a valid Resume ID');
-      return;
-    }
-    
     setCloudStatus('Loading...');
     try {
-      const result = await loadResume(resumeId);
-      
-      if (result.success && result.data) {
-        setData(result.data);
-        setPerformanceMetrics(prev => ({ ...prev, loadTime: result.loadTime }));
-        
-        const source = result.fromCache ? 'from local cache' : 'from cloud';
-        setCloudStatus(`Load successful! ${source} (${result.loadTime.toFixed(0)}ms)`);
+      const loaded = await loadResume(resumeId);
+      if (loaded) {
+        setData(loaded);
+        setCloudStatus('Loaded!');
       } else {
-        setCloudStatus(`Load failed: ${result.message || 'Resume not found'}`);
+        setCloudStatus('No resume found with this ID.');
       }
     } catch (e) {
-      setCloudStatus(`Load failed: ${e.message}`);
-      console.error('Load error:', e);
-    }
-  };
-  
-  // Get recent resumes
-  const fetchRecentResumes = async () => {
-    try {
-      const result = await getRecentResumes(5);
-      if (result.success) {
-        setRecentResumes(result.resumes);
-      }
-    } catch (e) {
-      console.error('Error fetching recent resumes:', e);
-    }
-  };
-  
-  // Load specific resume
-  const loadResumeById = async (id) => {
-    setResumeId(id);
-    setShowRecentResumes(false);
-    
-    setCloudStatus('Loading...');
-    try {
-      const result = await loadResume(id);
-      
-      if (result.success && result.data) {
-        setData(result.data);
-        setPerformanceMetrics(prev => ({ ...prev, loadTime: result.loadTime }));
-        setCloudStatus(`Load successful! (${result.loadTime.toFixed(0)}ms)`);
-      } else {
-        setCloudStatus(`Load failed: ${result.message || 'Resume not found'}`);
-      }
-    } catch (e) {
-      setCloudStatus(`Load failed: ${e.message}`);
+      setCloudStatus('Load failed: ' + e.message);
     }
   };
 
@@ -470,80 +438,12 @@ export default function ResumeBuilder() {
           
           {/* Load from Cloud Group */}
           <div className="flex items-center space-x-4">
-            <div className="relative">
-              <input 
-                className="border px-2 py-2 rounded" 
-                type="text" 
-                placeholder="Resume ID" 
-                value={resumeId} 
-                onChange={e => setResumeId(e.target.value)} 
-                style={{width:'180px', maxWidth: '180px'}} 
-              />
-              {recentResumes.length > 0 && (
-                <button 
-                  onClick={() => setShowRecentResumes(!showRecentResumes)}
-                  className="ml-1 text-gray-500 hover:text-gray-700"
-                  title="Show recent resumes"
-                >
-                  ▼
-                </button>
-              )}
-              {showRecentResumes && recentResumes.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full bg-white border rounded shadow-lg">
-                  {recentResumes.map(resume => (
-                    <div 
-                      key={resume.id} 
-                      className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                      onClick={() => loadResumeById(resume.id)}
-                    >
-                      <div className="font-medium">{resume.name || 'Unnamed Resume'}</div>
-                      <div className="text-xs text-gray-500">{resume.id}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button 
-              className="px-3 py-2 bg-blue-600 text-white rounded" 
-              onClick={handleSaveToCloud} 
-              type="button"
-              disabled={!navigator.onLine}
-              title={!navigator.onLine ? 'Cannot save in offline mode' : ''}
-            >
-              Save to Cloud
-            </button>
-            <button 
-              className="px-3 py-2 bg-green-600 text-white rounded" 
-              onClick={handleLoadFromCloud} 
-              type="button"
-            >
-              Load from Cloud
-            </button>
-            <button 
-              onClick={fetchRecentResumes}
-              className="px-2 py-2 bg-gray-200 text-gray-700 rounded"
-              title="Refresh recent resumes"
-            >
-              ↻
-            </button>
+            <input className="border px-2 py-2 rounded" type="text" placeholder="Resume ID" value={resumeId} onChange={e => setResumeId(e.target.value)} style={{width:'180px', maxWidth: '180px'}} />
+            <button className="px-3 py-2 bg-green-600 text-white rounded" onClick={handleLoadFromCloud} type="button">Load</button>
+            <button className="px-3 py-2 bg-blue-600 text-white rounded" onClick={handleSaveToCloud} type="button">Save to Cloud</button>
           </div>
+          <span className="text-sm">{cloudStatus}</span>
         </div>
-        
-        {cloudStatus && (
-          <div className={`mt-2 p-2 rounded ${!navigator.onLine ? 'bg-yellow-50 border border-yellow-200' : 'bg-blue-50 border border-blue-200'}`}>
-            <div className="flex justify-between items-center">
-              <div>{cloudStatus}</div>
-              {(performanceMetrics.saveTime > 0 || performanceMetrics.loadTime > 0) && (
-                <div className="text-xs text-gray-500">
-                  {performanceMetrics.saveTime > 0 && `Save: ${performanceMetrics.saveTime.toFixed(0)}ms`}
-                  {performanceMetrics.saveTime > 0 && performanceMetrics.loadTime > 0 && ' | '}
-                  {performanceMetrics.loadTime > 0 && `Load: ${performanceMetrics.loadTime.toFixed(0)}ms`}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        
         <hr className="border-t border-gray-300 my-4 w-full" />
       </div>
       <style>{`
@@ -642,16 +542,34 @@ export default function ResumeBuilder() {
           maxWidth: 180px;
         }
       `}</style>
-      <div className="py-6 max-w-5xl mx-auto px-4">
+      <div className="py-6 max-w-7xl mx-auto px-4">
         {!showPreview ? (
           <div className="space-y-6">
-            <div>
-              <h3 className="text-xl font-semibold mb-2" style={{fontSize: '24px', fontFamily: 'Times New Roman'}}>Profile</h3>
-              <hr className="border-t border-gray-300 mb-4" />
-            </div>
-            {/* Profile */}
-            <div style={{order: order.indexOf('profile')}}>
-              <div className="space-y-2">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={order}
+                strategy={verticalListSortingStrategy}
+              >
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={order}
+                strategy={verticalListSortingStrategy}
+              >
+                {/* Profile */}
+                <SortableSection key="profile" id="profile">
+                  <div>
+                    <h3 className="text-xl font-semibold mb-2" style={{fontSize: '24px', fontFamily: 'Times New Roman'}}>Profile</h3>
+                    <hr className="border-t border-gray-300 mb-4" />
+                  </div>
+                  <div className="space-y-2">
                 <div>
                   <input placeholder="Name" name="name" value={data.name} onChange={handleBasic} className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring font-bold" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
                 </div>
@@ -930,20 +848,20 @@ export default function ResumeBuilder() {
         ) : (
           <div id="resume-preview-wrapper" className="mx-auto" style={{ width: '210mm', height: '297mm', overflow: 'auto', padding: '0.15in 0.2in 0.19in 0.2in', boxSizing: 'border-box', backgroundColor: '#f0f0f0' }}>
             <div id="resume-preview" className="bg-white shadow" style={{ boxSizing: 'border-box', padding: '0.2in' }}>
-              {order.map(sectionKey => {
-                switch (sectionKey) {
+                  {order.map(sectionKey => {
+                    switch (sectionKey) {
                   case 'profile':
                     return (
-                      <section key="profile" className="">
+                      <div key="profile">
+                        <h2 className="text-xl font-semibold uppercase inline-flex items-center mb-3 whitespace-nowrap">
+                          <span>Personal Info</span>
+                        </h2>
                         <div className="flex justify-center items-center space-x-2 whitespace-nowrap" style={{marginBottom: '0px'}}>
                           <h1 className="text-2xl font-semibold inline-flex items-center space-x-2">
                             <span>{data.name}</span>
-                            <span className="controls inline-flex space-x-1">
-                              <button disabled={order[0]==='profile'} onClick={()=>moveSection('profile','up')} className="text-sm">↑</button>
-                              <button disabled={order[order.length-1]==='profile'} onClick={()=>moveSection('profile','down')} className="text-sm">↓</button>
-                            </span>
                           </h1>
                         </div>
+                        <hr className="border-t border-gray-300 mb-2 mx-4 preview-only" style={{display: 'block'}} />
                         <div className="contact-info flex flex-nowrap justify-center items-center space-x-1" style={{fontFamily: 'Times New Roman', fontSize: '8.8px', marginTop: '-2px'}}>
                           {data.location && <><span>{data.location}</span>{(data.phone || data.email || data.linkedin || data.github) && <span className="mx-1" style={{margin: '0 0.5em'}}>|</span>}</>}
                           {data.phone && <><span>{data.phone}</span>{(data.email || data.linkedin || data.github) && <span className="mx-1" style={{margin: '0 0.5em'}}>|</span>}</>}
@@ -951,17 +869,13 @@ export default function ResumeBuilder() {
                           {data.linkedin && <><a href={/^(https?:\/\/)/.test(data.linkedin) ? data.linkedin : `https://${data.linkedin}`} target="_blank" rel="noopener noreferrer" title="Ctrl+Click to open link">{data.linkedin}</a>{data.github && <span className="mx-1" style={{margin: '0 0.5em'}}>|</span>}</>}
                           {data.github && <a href={/^(https?:\/\/)/.test(data.github) ? data.github : `https://${data.github}`} target="_blank" rel="noopener noreferrer" title="Ctrl+Click to open link">{data.github.replace(/^https?:\/\/(www\.)?/i, '')}</a>}
                         </div>
-                      </section>
+                      </SortableSection>
                     );
                   case 'education':
                     return (
-                      <section key="education" className="mb-6">
-                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-3 whitespace-nowrap">
+                      <SortableSection key="education" id="education">
+                        <h2 className="text-xl font-semibold uppercase inline-flex items-center mb-3 whitespace-nowrap">
                           <span>Education</span>
-                          <span className="controls inline-flex space-x-1">
-                            <button disabled={order[0]==='education'} onClick={()=>moveSection('education','up')} className="text-sm">↑</button>
-                            <button disabled={order[order.length-1]==='education'} onClick={()=>moveSection('education','down')} className="text-sm">↓</button>
-                          </span>
                         </h2>
                         <hr className="border-t border-gray-300 mb-3 mx-4" />
                         {data.education.map((ed, i) => (
@@ -1011,17 +925,13 @@ export default function ResumeBuilder() {
                             )}
                           </div>
                         ))}
-                      </section>
+                      </SortableSection>
                     );
                   case 'skills':
                     return (
-                      <section key="skills" className="mb-6">
-                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-3 whitespace-nowrap">
+                      <SortableSection key="skills" id="skills">
+                        <h2 className="text-xl font-semibold uppercase inline-flex items-center mb-3 whitespace-nowrap">
                           <span>Skills</span>
-                          <span className="controls inline-flex space-x-1">
-                            <button disabled={order[0]==='skills'} onClick={()=>moveSection('skills','up')} className="text-sm">↑</button>
-                            <button disabled={order[order.length-1]==='skills'} onClick={()=>moveSection('skills','down')} className="text-sm">↓</button>
-                          </span>
                         </h2>
                         <hr className="border-t border-gray-300 mb-3 mx-4" />
                         {data.skills.length > 0 && (
@@ -1045,17 +955,13 @@ export default function ResumeBuilder() {
                             ))}
                           </div>
                         )}
-                      </section>
+                      </SortableSection>
                     );
                   case 'experience':
                     return (
-                      <section key="experience" className="mb-6">
-                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-3 whitespace-nowrap">
+                      <SortableSection key="experience" id="experience">
+                        <h2 className="text-xl font-semibold uppercase inline-flex items-center mb-3 whitespace-nowrap">
                           <span>Experience</span>
-                          <span className="controls inline-flex space-x-1">
-                            <button disabled={order[0]==='experience'} onClick={()=>moveSection('experience','up')} className="text-sm">↑</button>
-                            <button disabled={order[order.length-1]==='experience'} onClick={()=>moveSection('experience','down')} className="text-sm">↓</button>
-                          </span>
                         </h2>
                         <hr className="border-t border-gray-300 mb-3 mx-4" />
                         {data.experience.map((ex, i) => (
@@ -1105,17 +1011,13 @@ export default function ResumeBuilder() {
                             )}
                           </div>
                         ))}
-                      </section>
+                      </SortableSection>
                     );
                   case 'projects':
                     return (
-                      <section key="projects" className="mb-6">
-                        <h2 className="text-xl font-semibold uppercase inline-flex items-center space-x-2 mb-3 whitespace-nowrap">
+                      <SortableSection key="projects" id="projects">
+                        <h2 className="text-xl font-semibold uppercase inline-flex items-center mb-3 whitespace-nowrap">
                           <span>Projects</span>
-                          <span className="controls inline-flex space-x-1">
-                            <button disabled={order[0]==='projects'} onClick={()=>moveSection('projects','up')} className="text-sm">↑</button>
-                            <button disabled={order[order.length-1]==='projects'} onClick={()=>moveSection('projects','down')} className="text-sm">↓</button>
-                          </span>
                         </h2>
                         <hr className="border-t border-gray-300 mb-3 mx-4" />
                         {data.projects.map((pr, i) => (
@@ -1157,15 +1059,17 @@ export default function ResumeBuilder() {
                             )}
                           </div>
                         ))}
-                      </section>
+                      </SortableSection>
                     );
                   default:
                     return null;
                 }
               })}
-            </div>
+            </SortableContext>
+          </DndContext>
           </div>
-        )}
+        </div>
+      )}
       </div>
     </>
   );

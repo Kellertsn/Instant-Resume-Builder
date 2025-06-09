@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { jsPDF } from 'jspdf';
+import React, { useState, useEffect, useRef } from 'react';
+import { saveResume, loadResume, loadResumeList, deleteResume } from '../utils/firestoreResume';
+import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
-import { saveResume, loadResume, getRecentResumes } from '../firestoreResume';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import SortableItem from './SortableItem';
 
 export default function ResumeBuilder() {
   // Preload Chinese font and calculate preview width
@@ -34,8 +37,7 @@ export default function ResumeBuilder() {
     education: [ { institution: '', degree: '', dates: '', location: '', details: [''] } ],
     skills: [ { skill: '' } ],
     experience: [ { position: '', company: '', dates: '', location: '', details: [''] } ],
-    projects: [ { title: '', dates: '', description: [''] } ],
-    createdAt: new Date().toISOString() // 添加創建時間戳
+    projects: [ { title: '', dates: '', description: [''] } ]
   });
 
   const [order, setOrder] = useState(['profile','education','skills','experience','projects']);
@@ -43,10 +45,7 @@ export default function ResumeBuilder() {
   const [livePreviewWidth, setLivePreviewWidth] = useState(0);
   const [resumeId, setResumeId] = useState('');
   const [cloudStatus, setCloudStatus] = useState('');
-  const [performanceMetrics, setPerformanceMetrics] = useState({ saveTime: 0, loadTime: 0 });
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [recentResumes, setRecentResumes] = useState([]);
-  const [showRecentResumes, setShowRecentResumes] = useState(false);
+  const [syncStatus, setSyncStatus] = useState({ status: 'idle', message: '' });
 
   const handleBasic = e => setData({ ...data, [e.target.name]: e.target.value });
 
@@ -87,15 +86,26 @@ export default function ResumeBuilder() {
     }
   };
 
-  const moveSection = (section, dir) => {
-    setOrder(prev => {
-      const idx = prev.indexOf(section);
-      const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
-      if (swapIdx < 0 || swapIdx >= prev.length) return prev;
-      const newOrder = [...prev];
-      [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
-      return newOrder;
-    });
+  // Set up sensors for drag and drop interactions
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Handle drag end event for section reordering
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      setOrder((items) => {
+        const oldIndex = items.indexOf(active.id);
+        const newIndex = items.indexOf(over.id);
+        
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
   };
 
   const handleBulletChange = (section, idx, bIdx, value, field='details') => {
@@ -348,202 +358,204 @@ export default function ResumeBuilder() {
     });
   };
 
-  // Monitor network status changes
-  useEffect(() => {
-    const handleOnlineStatus = () => {
-      setIsOnline(navigator.onLine);
-      if (navigator.onLine) {
-        setCloudStatus('Network connection restored');
-      } else {
-        setCloudStatus('Currently in offline mode. Changes will sync when network is restored');
-      }
-    };
-
-    window.addEventListener('online', handleOnlineStatus);
-    window.addEventListener('offline', handleOnlineStatus);
-
-    return () => {
-      window.removeEventListener('online', handleOnlineStatus);
-      window.removeEventListener('offline', handleOnlineStatus);
-    };
-  }, []);
-
   // --- Firestore Cloud Save/Load ---
   const handleSaveToCloud = async () => {
-    setCloudStatus('Saving...');
     try {
-      // Add timestamp
-      const resumeData = {
-        ...data,
-        updatedAt: new Date().toISOString(),
-        createdAt: data.createdAt || new Date().toISOString()
-      };
+      setSyncStatus({ status: 'saving', message: 'Saving resume...' });
+      const result = await saveResume(data, resumeId || null);
       
-      const result = await saveResume(resumeData, resumeId || null);
-      
-      if (result.success) {
+      if (result.status === 'success') {
         setResumeId(result.id);
-        setPerformanceMetrics(prev => ({ ...prev, saveTime: result.saveTime }));
-        setCloudStatus(`Save successful! Resume ID: ${result.id} (${result.saveTime.toFixed(0)}ms)`);
-        
-        // Update recent resumes list
-        fetchRecentResumes();
+        setCloudStatus(`Saved! Your Resume ID: ${result.id}`);
+        setSyncStatus({ status: 'success', message: 'Resume saved successfully' });
       } else {
-        setCloudStatus(`Save failed: ${result.message}`);
+        // Handle offline save
+        setCloudStatus(`${result.message} (ID: ${result.id || 'pending'})`);
+        setSyncStatus({ 
+          status: 'offline', 
+          message: 'Changes saved locally and will sync when online' 
+        });
       }
-    } catch (e) {
-      setCloudStatus(`Save failed: ${e.message}`);
-      console.error('Save error:', e);
+    } catch (error) {
+      console.error("Error saving to cloud:", error);
+      setCloudStatus(`Error: ${error.message}`);
+      setSyncStatus({ status: 'error', message: `Error: ${error.message}` });
     }
   };
-  
   const handleLoadFromCloud = async () => {
-    if (!resumeId.trim()) {
-      setCloudStatus('Please enter a valid Resume ID');
-      return;
-    }
-    
-    setCloudStatus('Loading...');
     try {
-      const result = await loadResume(resumeId);
+      const id = prompt("Enter your Resume ID:");
+      if (!id) return;
       
-      if (result.success && result.data) {
-        setData(result.data);
-        setPerformanceMetrics(prev => ({ ...prev, loadTime: result.loadTime }));
-        
-        const source = result.fromCache ? 'from local cache' : 'from cloud';
-        setCloudStatus(`Load successful! ${source} (${result.loadTime.toFixed(0)}ms)`);
-      } else {
-        setCloudStatus(`Load failed: ${result.message || 'Resume not found'}`);
-      }
-    } catch (e) {
-      setCloudStatus(`Load failed: ${e.message}`);
-      console.error('Load error:', e);
-    }
-  };
-  
-  // Get recent resumes
-  const fetchRecentResumes = async () => {
-    try {
-      const result = await getRecentResumes(5);
-      if (result.success) {
-        setRecentResumes(result.resumes);
-      }
-    } catch (e) {
-      console.error('Error fetching recent resumes:', e);
-    }
-  };
-  
-  // Load specific resume
-  const loadResumeById = async (id) => {
-    setResumeId(id);
-    setShowRecentResumes(false);
-    
-    setCloudStatus('Loading...');
-    try {
+      setSyncStatus({ status: 'loading', message: 'Loading resume...' });
       const result = await loadResume(id);
       
-      if (result.success && result.data) {
+      if (result.status === 'success') {
         setData(result.data);
-        setPerformanceMetrics(prev => ({ ...prev, loadTime: result.loadTime }));
-        setCloudStatus(`Load successful! (${result.loadTime.toFixed(0)}ms)`);
+        setResumeId(id);
+        
+        // Show if loaded from cache or server
+        const sourceText = result.source === 'local' ? '(from local cache)' : '';
+        const timeText = result.loadTime ? ` in ${result.loadTime}ms` : '';
+        setCloudStatus(`Loaded Resume ID: ${id} ${sourceText}${timeText}`);
+        setSyncStatus({ 
+          status: 'success', 
+          message: `Resume loaded successfully ${sourceText}` 
+        });
+      } else if (result.status === 'not_found') {
+        setCloudStatus(`Resume ID not found: ${id}`);
+        setSyncStatus({ status: 'error', message: 'Resume not found' });
       } else {
-        setCloudStatus(`Load failed: ${result.message || 'Resume not found'}`);
+        setCloudStatus(`Error: ${result.message}`);
+        setSyncStatus({ status: 'error', message: result.message });
       }
-    } catch (e) {
-      setCloudStatus(`Load failed: ${e.message}`);
+    } catch (error) {
+      console.error("Error loading from cloud:", error);
+      setCloudStatus(`Error: ${error.message}`);
+      setSyncStatus({ status: 'error', message: `Error: ${error.message}` });
     }
-  };
+  }
+}).then(canvas => {
+  // Add the canvas image to the PDF with high quality
+  const imgData = canvas.toDataURL('image/png', 1.0); // Use highest quality
+  const imgProps = pdf.getImageProperties(imgData);
+  const pdfWidth = pdf.internal.pageSize.getWidth() - margins.left - margins.right;
+  const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+  
+  // Use high quality settings to add image
+  pdf.addImage({
+    imageData: imgData,
+    x: margins.left,
+    y: margins.top,
+    width: pdfWidth,
+    height: pdfHeight,
+    compression: 'NONE',
+    alias: 'resume-image'
+  });
+  
+  // Handle hyperlinks
+  const callback = () => {
+      // add clickable link annotations
+      const container = document.getElementById('resume-preview');
+      const containerRect = container.getBoundingClientRect();
+      container.querySelectorAll('a').forEach(a => {
+        const rect = a.getBoundingClientRect();
+        pdf.link(
+          margins.left + rect.left - containerRect.left,
+          margins.top + rect.top - containerRect.top,
+          rect.width,
+          rect.height,
+          { url: a.href }
+        );
+      });
+      // Complete PDF generation
+      pdf.save(`${data.name || 'resume'}.pdf`);
+      if (needShow) setShowPreview(false);
+      document.querySelectorAll('.controls').forEach(el => el.style.visibility = 'visible');
+    };
+    
+    // Execute callback
+    callback();
+});
 
-  return (
-    <>
-      <div className="flex flex-col items-center mb-4">
-        <h1 className="text-4xl font-bold text-center mb-4">Resume Builder</h1>
-        <div className="flex items-center space-x-6">
-          {/* Preview & Download Group */}
-          <div className="flex items-center space-x-2">
-            <button onClick={togglePreview} className="px-4 py-2 bg-googleBlue text-white rounded">
-              {showPreview ? 'Show Form' : 'Show Preview'}
+// --- Firestore Cloud Save/Load ---
+const handleSaveToCloud = async () => {
+  try {
+    setSyncStatus({ status: 'saving', message: 'Saving resume...' });
+    const result = await saveResume(data, resumeId || null);
+    
+    if (result.status === 'success') {
+      setResumeId(result.id);
+      setCloudStatus(`Saved! Your Resume ID: ${result.id}`);
+      setSyncStatus({ status: 'success', message: 'Resume saved successfully' });
+    } else {
+      // Handle offline save
+      setCloudStatus(`${result.message} (ID: ${result.id || 'pending'})`);
+      setSyncStatus({ 
+        status: 'offline', 
+        message: 'Changes saved locally and will sync when online' 
+      });
+    }
+  } catch (error) {
+    console.error("Error saving to cloud:", error);
+    setCloudStatus(`Error: ${error.message}`);
+    setSyncStatus({ status: 'error', message: `Error: ${error.message}` });
+  }
+};
+const handleLoadFromCloud = async () => {
+  try {
+    const id = prompt("Enter your Resume ID:");
+    if (!id) return;
+    
+    setSyncStatus({ status: 'loading', message: 'Loading resume...' });
+    const result = await loadResume(id);
+    
+    if (result.status === 'success') {
+      setData(result.data);
+      setResumeId(id);
+      
+      // Show if loaded from cache or server
+      const sourceText = result.source === 'local' ? '(from local cache)' : '';
+      const timeText = result.loadTime ? ` in ${result.loadTime}ms` : '';
+      setCloudStatus(`Loaded Resume ID: ${id} ${sourceText}${timeText}`);
+      setSyncStatus({ 
+        status: 'success', 
+        message: `Resume loaded successfully ${sourceText}` 
+      });
+    } else if (result.status === 'not_found') {
+      setCloudStatus(`Resume ID not found: ${id}`);
+      setSyncStatus({ status: 'error', message: 'Resume not found' });
+    } else {
+      setCloudStatus(`Error: ${result.message}`);
+      setSyncStatus({ status: 'error', message: result.message });
+    }
+  } catch (error) {
+    console.error("Error loading from cloud:", error);
+    setCloudStatus(`Error: ${error.message}`);
+    setSyncStatus({ status: 'error', message: `Error: ${error.message}` });
+  }
+};
+
+return (
+  <>
+    <div className="pb-4 px-4 pt-2 md:px-6 flex justify-between items-center">
+      <div>
+        <div className="flex items-center space-x-2">
+          <button onClick={togglePreview} className={`px-3 py-1 rounded-md text-white ${!showPreview ? 'bg-blue-600' : 'bg-gray-500'}`}>{!showPreview ? 'Edit Mode' : 'Preview Mode'}</button>
+          <button onClick={togglePreview} className={`px-3 py-1 rounded-md text-white ${showPreview ? 'bg-blue-600' : 'bg-gray-500'}`}>{showPreview ? 'Edit Mode' : 'Preview Mode'}</button>
+          <button onClick={downloadPDF} className="px-3 py-1 rounded-md bg-green-600 text-white">Download PDF</button>
+              ) : 'Save to Cloud'}
             </button>
-            <button onClick={downloadPDF} className="px-4 py-2 bg-googleBlue text-white rounded">Download PDF</button>
-          </div>
-          
-          {/* Load from Cloud Group */}
-          <div className="flex items-center space-x-4">
-            <div className="relative">
-              <input 
-                className="border px-2 py-2 rounded" 
-                type="text" 
-                placeholder="Resume ID" 
-                value={resumeId} 
-                onChange={e => setResumeId(e.target.value)} 
-                style={{width:'180px', maxWidth: '180px'}} 
-              />
-              {recentResumes.length > 0 && (
-                <button 
-                  onClick={() => setShowRecentResumes(!showRecentResumes)}
-                  className="ml-1 text-gray-500 hover:text-gray-700"
-                  title="Show recent resumes"
-                >
-                  ▼
-                </button>
-              )}
-              {showRecentResumes && recentResumes.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full bg-white border rounded shadow-lg">
-                  {recentResumes.map(resume => (
-                    <div 
-                      key={resume.id} 
-                      className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                      onClick={() => loadResumeById(resume.id)}
-                    >
-                      <div className="font-medium">{resume.name || 'Unnamed Resume'}</div>
-                      <div className="text-xs text-gray-500">{resume.id}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
             <button 
-              className="px-3 py-2 bg-blue-600 text-white rounded" 
-              onClick={handleSaveToCloud} 
-              type="button"
-              disabled={!navigator.onLine}
-              title={!navigator.onLine ? 'Cannot save in offline mode' : ''}
-            >
-              Save to Cloud
-            </button>
-            <button 
-              className="px-3 py-2 bg-green-600 text-white rounded" 
               onClick={handleLoadFromCloud} 
-              type="button"
+              className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 flex items-center"
+              disabled={syncStatus.status === 'loading'}
             >
-              Load from Cloud
-            </button>
-            <button 
-              onClick={fetchRecentResumes}
-              className="px-2 py-2 bg-gray-200 text-gray-700 rounded"
-              title="Refresh recent resumes"
-            >
-              ↻
+              {syncStatus.status === 'loading' ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-1 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Loading...
+                </>
+              ) : 'Load from Cloud'}
             </button>
           </div>
         </div>
         
+        {/* Cloud Status - Minimalist version */}
         {cloudStatus && (
-          <div className={`mt-2 p-2 rounded ${!navigator.onLine ? 'bg-yellow-50 border border-yellow-200' : 'bg-blue-50 border border-blue-200'}`}>
-            <div className="flex justify-between items-center">
-              <div>{cloudStatus}</div>
-              {(performanceMetrics.saveTime > 0 || performanceMetrics.loadTime > 0) && (
-                <div className="text-xs text-gray-500">
-                  {performanceMetrics.saveTime > 0 && `Save: ${performanceMetrics.saveTime.toFixed(0)}ms`}
-                  {performanceMetrics.saveTime > 0 && performanceMetrics.loadTime > 0 && ' | '}
-                  {performanceMetrics.loadTime > 0 && `Load: ${performanceMetrics.loadTime.toFixed(0)}ms`}
-                </div>
-              )}
-            </div>
+          <div className="mb-2 text-xs flex items-center justify-center">
+            <span className={`inline-block w-2 h-2 rounded-full mr-1 ${
+              syncStatus.status === 'offline' ? 'bg-yellow-500' :
+              syncStatus.status === 'error' ? 'bg-red-500' :
+              syncStatus.status === 'success' ? 'bg-green-500' :
+              'bg-blue-500'
+            }`}></span>
+            <span className="text-gray-600">{cloudStatus}</span>
           </div>
         )}
-        
         <hr className="border-t border-gray-300 my-4 w-full" />
       </div>
       <style>{`
@@ -644,128 +656,116 @@ export default function ResumeBuilder() {
       `}</style>
       <div className="py-6 max-w-5xl mx-auto px-4">
         {!showPreview ? (
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-xl font-semibold mb-2" style={{fontSize: '24px', fontFamily: 'Times New Roman'}}>Profile</h3>
-              <hr className="border-t border-gray-300 mb-4" />
-            </div>
-            {/* Profile */}
-            <div style={{order: order.indexOf('profile')}}>
-              <div className="space-y-2">
-                <div>
-                  <input placeholder="Name" name="name" value={data.name} onChange={handleBasic} className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring font-bold" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
-                </div>
-                <div className="flex space-x-2">
-                  <input placeholder="Location" name="location" value={data.location} onChange={handleBasic} className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
-                  <input placeholder="Phone" name="phone" value={data.phone} onChange={handleBasic} className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
-                </div>
-                <div className="flex space-x-2">
-                  <input placeholder="Email" name="email" value={data.email} onChange={handleBasic} className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
-                  <input placeholder="LinkedIn URL" name="linkedin" value={data.linkedin} onChange={handleBasic} className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
-                </div>
-                <div>
-                  <input placeholder="GitHub URL" name="github" value={data.github} onChange={handleBasic} className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
-                </div>
-              </div>
-            </div>
-            {/* Education */}
-            <div style={{order: order.indexOf('education')}}>
-              <h3 className="text-xl font-semibold mb-2">Education</h3>
-              <hr className="border-t border-gray-300 mb-4" />
-              {data.education.map((ed, i) => (
-                <div key={i} className="space-y-2 mb-4 pb-2 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
-                  <div className="space-y-2">
-                    <div className="flex space-x-2">
-                      <input placeholder="Institution" value={ed.institution} onChange={e=>handleArray('education',i,'institution',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring font-bold" style={{maxWidth: '180px'}} />
-                      <input placeholder="Dates" value={ed.dates} onChange={e=>handleArray('education',i,'dates',e.target.value)} className="w-48 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: '180px'}} />
-                    </div>
-                    <div className="flex space-x-2">
-                      <input placeholder="Degree" value={ed.degree} onChange={e=>handleArray('education',i,'degree',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: '180px'}} />
-                      <input placeholder="Location" value={ed.location} onChange={e=>handleArray('education',i,'location',e.target.value)} className="w-48 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: '180px'}} />
-                    </div>
-                  </div>
-                  {ed.details.map((bullet, bIdx) => (
-                    <div key={bIdx} className="flex items-center mb-2 relative">
-
-                      <div className="flex w-full items-center">
-                        <textarea 
-                          placeholder="Bullet point" 
-                          value={bullet} 
-                          onChange={e=>handleBulletChange('education',i,bIdx,e.target.value)} 
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const cursorPosition = e.target.selectionStart;
-                              const textBeforeCursor = e.target.value.substring(0, cursorPosition);
-                              const textAfterCursor = e.target.value.substring(cursorPosition);
-                              const newValue = textBeforeCursor + '\n' + textAfterCursor;
-                              handleBulletChange('education',i,bIdx,newValue);
-                              e.target.style.height = 'auto';
-                              e.target.style.height = e.target.scrollHeight + 'px';
-                              setTimeout(() => {
-                                e.target.selectionStart = cursorPosition + 1;
-                                e.target.selectionEnd = cursorPosition + 1;
-                              }, 0);
-                            }
-                          }}
-                          className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring resize-none overflow-hidden whitespace-pre-wrap" 
-                          style={{
-                            minHeight: '32px',
-                            width: '100%',
-                            maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%',
-                            wordWrap: 'break-word',
-                            overflowWrap: 'break-word',
-                            whiteSpace: 'pre-wrap',
-                          }}
-                          onInput={e => {
-                            e.target.style.height = 'auto';
-                            e.target.style.height = e.target.scrollHeight + 'px';
-                          }}
-                        />
-                        <div className="flex items-center ml-2">
-                          <button onClick={()=>addBullet('education',i,bIdx)} className="text-xl text-googleGreen font-bold">+</button>
-                          {bIdx > 0 && <button onClick={()=>removeBullet('education',i,bIdx)} className="text-xl text-red-500 font-bold ml-1">-</button>}
+          <DndContext 
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext 
+              items={order}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-6">
+                {order.map((sectionKey) => (
+                  <SortableItem key={sectionKey} id={sectionKey}>
+                    {sectionKey === 'profile' && (
+                      <div className="space-y-2">
+                        <div>
+                          <input placeholder="Name" name="name" value={data.name} onChange={handleBasic} className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring font-bold" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <input placeholder="Email" name="email" value={data.email} onChange={handleBasic} className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
+                          </div>
+                          <div>
+                            <input placeholder="Phone" name="phone" value={data.phone} onChange={handleBasic} className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <input placeholder="Location" name="location" value={data.location} onChange={handleBasic} className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
+                          </div>
+                          <div>
+                            <input placeholder="LinkedIn URL" name="linkedin" value={data.linkedin} onChange={handleBasic} className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
+                          </div>
+                        </div>
+                        <div>
+                          <input placeholder="GitHub URL" name="github" value={data.github} onChange={handleBasic} className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%'}} />
                         </div>
                       </div>
-                    </div>
-                  ))}
-                  {i === data.education.length - 1 && (
-                    <div className="flex mt-1 space-x-2">
-                      <button onClick={()=>addItem('education')} className="px-2 py-1 bg-googleGreen text-white rounded text-xs">Add Education</button>
-                      {i>0 && <button onClick={()=>removeItem('education',i)} className="px-2 py-1 bg-red-500 text-white rounded text-xs">Remove</button>}
-                    </div>
-                  )}
-                </div>
-              ))}
-
-            </div>
-            {/* Skills */}
+                    )}
+                  </SortableItem>
+                  {sectionKey === 'education' && (
+                    <div className="education-section">
+                      {data.education.map((ed, i) => (
+                        <div key={i} className="space-y-2 mb-4 pb-2 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
+                          <div className="space-y-2">
+                            <div className="flex space-x-2">
+                              <input placeholder="Institution" value={ed.institution} onChange={e=>handleArray('education',i,'institution',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring font-bold" style={{maxWidth: '180px'}} />
+                              <input placeholder="Dates" value={ed.dates} onChange={e=>handleArray('education',i,'dates',e.target.value)} className="w-48 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: '180px'}} />
+                            </div>
+                            <div className="flex space-x-2">
+                              <input placeholder="Degree" value={ed.degree} onChange={e=>handleArray('education',i,'degree',e.target.value)} className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: '180px'}} />
+                              <input placeholder="Location" value={ed.location} onChange={e=>handleArray('education',i,'location',e.target.value)} className="w-48 p-2 border border-gray-300 rounded focus:outline-none focus:ring" style={{maxWidth: '180px'}} />
+                            </div>
+                          </div>
+                          {ed.details.map((bullet, bIdx) => (
+                            <div key={bIdx} className="flex items-center mb-2 relative">
+                              <div className="flex w-full items-center">
+                                <textarea 
+                                  placeholder="Bullet point" 
+                                  value={bullet} 
+                                  onChange={e=>handleBulletChange('education',i,bIdx,e.target.value)} 
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      const cursorPosition = e.target.selectionStart;
+                                      const textBeforeCursor = e.target.value.substring(0, cursorPosition);
+                                      const textAfterCursor = e.target.value.substring(cursorPosition);
+                                      const newValue = textBeforeCursor + '\n' + textAfterCursor;
+                                      handleBulletChange('education',i,bIdx,newValue);
+                                      e.target.style.height = 'auto';
+                                      e.target.style.height = e.target.scrollHeight + 'px';
+                                      setTimeout(() => {
+                                        e.target.selectionStart = cursorPosition + 1;
+                                        e.target.selectionEnd = cursorPosition + 1;
+                                      }, 0);
+                                    }
+                                  }}
+                                  className="flex-1 p-2 border border-gray-300 rounded focus:outline-none focus:ring resize-none overflow-hidden whitespace-pre-wrap" 
+                                  style={{
+                                    minHeight: '32px',
+                                    width: '100%',
+                                    maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%',
+                                    wordWrap: 'break-word',
+                                    overflowWrap: 'break-word',
+                                    whiteSpace: 'pre-wrap',
+                                  }}
+                                  onInput={e => {
+                                    e.target.style.height = 'auto';
+                                    e.target.style.height = e.target.scrollHeight + 'px';
+                                  }}
+                                />
+                                <div className="flex items-center ml-2">
+                                  <button onClick={()=>addBullet('education',i,bIdx)} className="text-xl text-googleGreen font-bold">+</button>
+                                  {bIdx > 0 && <button onClick={()=>removeBullet('education',i,bIdx)} className="text-xl text-red-500 font-bold ml-1">-</button>}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
             <div style={{order: order.indexOf('skills')}}>
               <h3 className="text-xl font-semibold mb-2">Skills</h3>
               <hr className="border-t border-gray-300 mb-4" />
               {data.skills.map((skill,i)=>(
                 <div key={i} className="mb-4 pb-2 border-b border-gray-200 last:border-b-0 last:mb-0 last:pb-0">
                   <div className="flex">
-                      <textarea
+                    <textarea
                       value={skill.skill}
                       onChange={e=>handleArray('skills',i,'skill',e.target.value)}
                       placeholder="Bullet point"
                       className="p-2 border border-gray-300 rounded focus:outline-none focus:ring resize-none overflow-hidden whitespace-pre-wrap"
-                      style={{ 
-                        minHeight: '40px', 
-                        width: '100%',
-                        maxWidth: livePreviewWidth ? `${livePreviewWidth}px` : '100%',
-                        wordWrap: 'break-word',
-                        overflowWrap: 'break-word',
-                        whiteSpace: 'pre-wrap',
-                      }}
-                      onInput={e => {
-                        e.target.style.height = 'auto';
-                        e.target.style.height = e.target.scrollHeight + 'px';
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
+
+                      
                           const cursorPosition = e.target.selectionStart;
                           const textBeforeCursor = e.target.value.substring(0, cursorPosition);
                           const textAfterCursor = e.target.value.substring(cursorPosition);
@@ -923,10 +923,12 @@ export default function ResumeBuilder() {
                     </div>
                   )}
                 </div>
+                </SortableItem>
               ))}
 
             </div>
-          </div>
+          </SortableContext>
+        </DndContext>
         ) : (
           <div id="resume-preview-wrapper" className="mx-auto" style={{ width: '210mm', height: '297mm', overflow: 'auto', padding: '0.15in 0.2in 0.19in 0.2in', boxSizing: 'border-box', backgroundColor: '#f0f0f0' }}>
             <div id="resume-preview" className="bg-white shadow" style={{ boxSizing: 'border-box', padding: '0.2in' }}>
@@ -1164,6 +1166,26 @@ export default function ResumeBuilder() {
                 }
               })}
             </div>
+          </SortableContext>
+        </DndContext>
+        ) : (
+          <div id="resume-preview" className="bg-white p-8 shadow-md">
+            {order.map(sectionKey => {
+              switch(sectionKey) {
+                case 'profile':
+                  return renderProfile();
+                case 'education':
+                  return renderEducation();
+                case 'skills':
+                  return renderSkills();
+                case 'experience':
+                  return renderExperience();
+                case 'projects':
+                  return renderProjects();
+                default:
+                  return null;
+              }
+            })}
           </div>
         )}
       </div>
