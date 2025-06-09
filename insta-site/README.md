@@ -86,14 +86,6 @@ The latest version is always available at: [https://instant-resume-builder.verce
 - Performance metrics for save/load operations.
 - Recent resumes dropdown for quick access to previously saved resumes.
 
-## Technical Achievements
-
-- Engineered a responsive resume builder SPA with React and Tailwind CSS that delivers live preview updates in **<100ms**, implementing section reordering functionality that enables **5!** (120) possible layout permutations across profile, education, skills, experience, and projects sections
-
-- Integrated jsPDF and html2canvas for PDF export with custom styling algorithms that achieve **>90%** layout consistency between screen preview and exported documents, reducing rendering inconsistencies through precise typography and spacing control across all resume sections
-
-- Implemented Firebase Firestore with intelligent caching that reduces cloud read operations by **~70%** through 5-minute TTL strategy, achieving data retrieval speeds of **<800ms** and enabling seamless offline editing with automatic synchronization when network connectivity is restored
-
 ## License
 
 MIT
