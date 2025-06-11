@@ -8,20 +8,21 @@ const resumeCache = new Map();
  * Save resume to Firebase
  * @param {Object} data - Resume data
  * @param {string} [existingId] - Optional existing ID for updating instead of creating new document
+ * @param {string} userId - ID of the user saving the resume
  * @returns {Object} Object containing ID and performance data
  */
-export async function saveResume(data, existingId = null) {
+export async function saveResume(data, existingId = null, userId) {
   try {
     const startTime = performance.now();
     let docRef;
-    
+
     if (existingId) {
       // Update existing document
       docRef = doc(db, "resumes", existingId);
-      await setDoc(docRef, data, { merge: true });
+      await setDoc(docRef, { ...data, userId }, { merge: true });
     } else {
       // Create new document
-      docRef = await addDoc(collection(db, "resumes"), data);
+      docRef = await addDoc(collection(db, "resumes"), { ...data, userId });
     }
     
     const id = existingId || docRef.id;
@@ -117,14 +118,19 @@ export async function loadResume(id) {
 
 /**
  * Get user's recent resumes
+ * @param {string} userId - ID of the current user
  * @param {number} [maxResults=5] - Maximum number of results
  * @returns {Array} Array of resume IDs and creation times
  */
-export async function getRecentResumes(maxResults = 5) {
+export async function getRecentResumes(userId, maxResults = 5) {
   try {
     const startTime = performance.now();
     
-    const q = query(collection(db, "resumes"), limit(maxResults));
+    const q = query(
+      collection(db, "resumes"),
+      where("userId", "==", userId),
+      limit(maxResults)
+    );
     const querySnapshot = await getDocs(q);
     
     const results = [];

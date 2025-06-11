@@ -3,7 +3,18 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { saveResume, loadResume, getRecentResumes } from '../firestoreResume';
 
+// Generate or retrieve a persistent user ID
+const getUserId = () => {
+  let id = localStorage.getItem('userId');
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem('userId', id);
+  }
+  return id;
+};
+
 export default function ResumeBuilder() {
+  const userId = getUserId();
   // Preload Chinese font and calculate preview width
   useEffect(() => {
     const link = document.createElement('link');
@@ -379,7 +390,7 @@ export default function ResumeBuilder() {
         createdAt: data.createdAt || new Date().toISOString()
       };
       
-      const result = await saveResume(resumeData, resumeId || null);
+      const result = await saveResume(resumeData, resumeId || null, userId);
       
       if (result.success) {
         setResumeId(result.id);
@@ -425,7 +436,7 @@ export default function ResumeBuilder() {
   // Get recent resumes
   const fetchRecentResumes = async () => {
     try {
-      const result = await getRecentResumes(5);
+      const result = await getRecentResumes(userId, 5);
       if (result.success) {
         setRecentResumes(result.resumes);
       }
