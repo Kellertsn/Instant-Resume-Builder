@@ -35,7 +35,7 @@ export default function ResumeBuilder() {
     skills: [ { skill: '' } ],
     experience: [ { position: '', company: '', dates: '', location: '', details: [''] } ],
     projects: [ { title: '', dates: '', description: [''] } ],
-    createdAt: new Date().toISOString() // 添加創建時間戳
+    createdAt: new Date().toISOString() // Add creation timestamp
   });
 
   const [order, setOrder] = useState(['profile','education','skills','experience','projects']);
@@ -123,7 +123,7 @@ export default function ResumeBuilder() {
   };
 
   const applyPDFStyling = (preview) => {
-    // 保持表單標題大小和字體
+    // Keep form heading size and font
     const formHeadings = document.querySelectorAll('h3.text-xl');
     formHeadings.forEach(heading => {
       heading.style.fontSize = '24px';
@@ -158,10 +158,10 @@ export default function ResumeBuilder() {
     rightCells.forEach(cell => {
       cell.style.textAlign = 'right';
       cell.style.paddingRight = '0';
-      cell.style.width = '30%'; // 確保右側單元格有固定寬度
+      cell.style.width = '30%'; // Ensure right cell has fixed width
     });
     
-    // 確保日期和位置完全靠右對齊
+    // Ensure date and location are fully right-aligned
     const dateSpans = preview.querySelectorAll('td:last-child span');
     dateSpans.forEach(span => {
       span.style.float = 'right';
@@ -174,7 +174,7 @@ export default function ResumeBuilder() {
       span.style.right = '0';
     });
     
-    // 調整表格寬度
+    // Adjust table width
     const tables = preview.querySelectorAll('table');
     tables.forEach(table => {
       table.style.width = '100%';

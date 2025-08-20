@@ -68,7 +68,7 @@ export async function loadResume(id) {
       if (cacheAge < 5 * 60 * 1000) {
         return {
           data: cached.data,
-          loadTime: 0, // 從緩存加載，時間接近0
+          loadTime: 0, // Loaded from cache, time close to 0
           fromCache: true,
           success: true
         };
